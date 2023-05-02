@@ -5,33 +5,32 @@ import subprocess
 import docker
 from docker.errors import ImageNotFound
 
-from autogpt.commands.command import command
-from autogpt.config import Config
-
-CFG = Config()
+from autogpt.workspace import WORKSPACE_PATH, path_in_workspace
 
 
-@command("execute_python_file", "Execute Python File", '"filename": "<filename>"')
-def execute_python_file(filename: str) -> str:
+def execute_python_file(file: str) -> str:
     """Execute a Python file in a Docker container and return the output
 
     Args:
-        filename (str): The name of the file to execute
+        file (str): The name of the file to execute
 
     Returns:
         str: The output of the file
     """
-    print(f"Executing file '{filename}'")
 
-    if not filename.endswith(".py"):
+    print(f"Executing file '{file}' in workspace '{WORKSPACE_PATH}'")
+
+    if not file.endswith(".py"):
         return "Error: Invalid file type. Only .py files are allowed."
 
-    if not os.path.isfile(filename):
-        return f"Error: File '{filename}' does not exist."
+    file_path = path_in_workspace(file)
+
+    if not os.path.isfile(file_path):
+        return f"Error: File '{file}' does not exist."
 
     if we_are_running_in_a_docker_container():
         result = subprocess.run(
-            f"python {filename}", capture_output=True, encoding="utf8", shell=True
+            f"python {file_path}", capture_output=True, encoding="utf8", shell=True
         )
         if result.returncode == 0:
             return result.stdout
@@ -63,9 +62,9 @@ def execute_python_file(filename: str) -> str:
 
         container = client.containers.run(
             image_name,
-            f"python {filename}",
+            f"python {file}",
             volumes={
-                CFG.workspace_path: {
+                os.path.abspath(WORKSPACE_PATH): {
                     "bind": "/workspace",
                     "mode": "ro",
                 }
@@ -95,15 +94,6 @@ def execute_python_file(filename: str) -> str:
         return f"Error: {str(e)}"
 
 
-@command(
-    "execute_shell",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
-    CFG.execute_local_commands,
-    "You are not allowed to run local shell commands. To execute"
-    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-    "in your config. Do not attempt to bypass the restriction.",
-)
 def execute_shell(command_line: str) -> str:
     """Execute a shell command and return the output
 
@@ -113,17 +103,10 @@ def execute_shell(command_line: str) -> str:
     Returns:
         str: The output of the command
     """
-
-    if not CFG.execute_local_commands:
-        return (
-            "You are not allowed to run local shell commands. To execute"
-            " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-            "in your config. Do not attempt to bypass the restriction."
-        )
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if CFG.workspace_path not in current_dir:
-        os.chdir(CFG.workspace_path)
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
@@ -134,16 +117,9 @@ def execute_shell(command_line: str) -> str:
 
     os.chdir(current_dir)
 
+    return output
 
-@command(
-    "execute_shell_popen",
-    "Execute Shell Command, non-interactive commands only",
-    '"command_line": "<command_line>"',
-    CFG.execute_local_commands,
-    "You are not allowed to run local shell commands. To execute"
-    " shell commands, EXECUTE_LOCAL_COMMANDS must be set to 'True' "
-    "in your config. Do not attempt to bypass the restriction.",
-)
+
 def execute_shell_popen(command_line) -> str:
     """Execute a shell command with Popen and returns an english description
     of the event and the process id
@@ -156,8 +132,8 @@ def execute_shell_popen(command_line) -> str:
     """
     current_dir = os.getcwd()
     # Change dir into workspace if necessary
-    if CFG.workspace_path not in current_dir:
-        os.chdir(CFG.workspace_path)
+    if str(WORKSPACE_PATH) not in current_dir:
+        os.chdir(WORKSPACE_PATH)
 
     print(f"Executing command '{command_line}' in working directory '{os.getcwd()}'")
 
